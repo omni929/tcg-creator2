@@ -1,8 +1,11 @@
+import { CARD_CANVAS } from "@card-pipeline/schema";
 import * as THREE from "three";
+
+const CARD_ASPECT_RATIO = CARD_CANVAS.height / CARD_CANVAS.width;
 
 export const CARD_MODEL = {
   width: 3,
-  height: 4.2,
+  height: 3 * CARD_ASPECT_RATIO,
   thickness: 0.085,
   radius: 0.16
 } as const;

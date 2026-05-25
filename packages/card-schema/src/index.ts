@@ -162,9 +162,9 @@ export const FINISH_PROFILES: FinishProfile[] = [
 ];
 
 export const VIEW_PRESETS: ViewPreset[] = [
-  { id: "hero", label: "Hero", rotationX: -0.16, rotationY: 0.24, distance: 7.4 },
-  { id: "front", label: "Front", rotationX: -0.02, rotationY: 0, distance: 7.1 },
-  { id: "dramatic", label: "Dramatic", rotationX: -0.24, rotationY: 0.42, distance: 7.8 }
+  { id: "hero", label: "Hero", rotationX: -0.16, rotationY: 0.24, distance: 10.3 },
+  { id: "front", label: "Front", rotationX: -0.02, rotationY: 0, distance: 10.05 },
+  { id: "dramatic", label: "Dramatic", rotationX: -0.24, rotationY: 0.42, distance: 10.8 }
 ];
 
 export const EXPORT_PRESETS: ExportPreset[] = [

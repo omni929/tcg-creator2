@@ -286,9 +286,11 @@ export function CardViewport({
   project: CardProject;
   interactive?: boolean;
 }): ReactElement {
+  const viewPreset = getViewPreset(project.viewPresetId);
+
   return (
     <Canvas
-      camera={{ position: [0, 0.1, 7.4], fov: 24 }}
+      camera={{ position: [0, 0.1, viewPreset.distance], fov: 24 }}
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: true }}
     >
@@ -302,9 +304,12 @@ export function CardViewport({
       {interactive ? (
         <OrbitControls
           enablePan={false}
-          enableZoom={false}
+          enableZoom
           enableDamping
           dampingFactor={0.08}
+          zoomSpeed={0.85}
+          minDistance={Math.max(7.6, viewPreset.distance - 1.9)}
+          maxDistance={viewPreset.distance + 4.2}
           minPolarAngle={Math.PI / 2.12}
           maxPolarAngle={Math.PI / 1.88}
           minAzimuthAngle={-0.6}
