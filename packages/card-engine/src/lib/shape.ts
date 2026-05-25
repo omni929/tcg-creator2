@@ -10,6 +10,15 @@ export const CARD_MODEL = {
   radius: 0.16
 } as const;
 
+export const CARD_RENDER_TRANSFORM = {
+  groupPosition: [0, 0.14, 0] as const,
+  cameraTarget: [0, -0.4, 0] as const
+} as const;
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
 export function createRoundedRectShape(
   width = CARD_MODEL.width,
   height = CARD_MODEL.height,
@@ -33,7 +42,19 @@ export function createRoundedRectShape(
 }
 
 export function createCardFaceGeometry(): THREE.ShapeGeometry {
-  return new THREE.ShapeGeometry(createRoundedRectShape(), 36);
+  const geometry = new THREE.ShapeGeometry(createRoundedRectShape(), 36);
+  const position = geometry.getAttribute("position");
+  const uv = new Float32Array(position.count * 2);
+
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index);
+    const y = position.getY(index);
+    uv[index * 2] = clamp01((x + CARD_MODEL.width / 2) / CARD_MODEL.width);
+    uv[index * 2 + 1] = clamp01((y + CARD_MODEL.height / 2) / CARD_MODEL.height);
+  }
+
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  return geometry;
 }
 
 export function createCardEdgeGeometry(): THREE.ExtrudeGeometry {

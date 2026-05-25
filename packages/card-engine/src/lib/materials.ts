@@ -1,5 +1,6 @@
 import { type FinishProfile, type MaterialSettings } from "@card-pipeline/schema";
 import * as THREE from "three";
+import { CARD_MODEL } from "./shape";
 
 const overlayVertexShader = `
   varying vec2 vUv;
@@ -18,6 +19,8 @@ const overlayVertexShader = `
 const overlayFragmentShader = `
   uniform sampler2D uBaseMap;
   uniform sampler2D uFoilMask;
+  uniform sampler2D uRoughnessMap;
+  uniform sampler2D uNormalMap;
   uniform float uTime;
   uniform float uSheen;
   uniform float uRainbow;
@@ -25,6 +28,7 @@ const overlayFragmentShader = `
   uniform float uFoilIntensity;
   uniform float uFoilScale;
   uniform float uFoilDetail;
+  uniform float uCardAspect;
   uniform vec3 uAccent;
 
   varying vec2 vUv;
@@ -33,6 +37,14 @@ const overlayFragmentShader = `
 
   vec3 spectral(float value) {
     return 0.5 + 0.5 * cos(6.28318 * (vec3(0.0, 0.33, 0.67) + value));
+  }
+
+  vec2 scaleFromCenter(vec2 uv, float scale) {
+    return (uv - 0.5) * scale + 0.5;
+  }
+
+  vec2 toCardPatternUv(vec2 uv) {
+    return vec2(uv.x, (uv.y - 0.5) * uCardAspect + 0.5);
   }
 
   void main() {
@@ -44,13 +56,18 @@ const overlayFragmentShader = `
     vec3 normal = normalize(vWorldNormal);
     vec3 viewDir = normalize(cameraPosition - vWorldPosition);
     float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 3.0);
-    vec2 scaledUv = (vUv - 0.5) * uFoilScale + 0.5;
-    float mask = texture2D(uFoilMask, scaledUv).r;
-    float bandA = sin((scaledUv.x * 12.0) + (scaledUv.y * 4.0) + (uTime * 0.7)) * 0.5 + 0.5;
-    float bandB = sin((scaledUv.x - scaledUv.y + uTime * 0.12) * (18.0 + uFoilDetail * 22.0)) * 0.5 + 0.5;
-    float sparkle = pow(max(0.0, 1.0 - abs((scaledUv.x + scaledUv.y) - 1.0)), 2.0);
+    vec2 maskUv = clamp(scaleFromCenter(vUv, uFoilScale), 0.0, 1.0);
+    vec2 patternUv = toCardPatternUv(maskUv);
+    float mask = texture2D(uFoilMask, maskUv).r;
+    float roughnessDetail = texture2D(uRoughnessMap, vUv).r;
+    vec3 tangentNormal = texture2D(uNormalMap, vUv).xyz * 2.0 - 1.0;
+    float normalDetail = clamp(length(tangentNormal.xy), 0.0, 1.0);
+    float bandA = sin((patternUv.x * 12.0) + (patternUv.y * 4.0) + (uTime * 0.7)) * 0.5 + 0.5;
+    float bandB = sin((patternUv.x - patternUv.y + uTime * 0.12) * (18.0 + uFoilDetail * 22.0)) * 0.5 + 0.5;
+    float sparkle = pow(max(0.0, 1.0 - abs((patternUv.x + patternUv.y) - 1.0)), 2.0);
     float foil = mask * uFoilIntensity * uSheen * (bandA * 0.5 + bandB * (0.2 + uFoilDetail * 0.45) + sparkle * 0.15);
-    vec3 rainbow = spectral((scaledUv.x * 0.8) + (scaledUv.y * 0.35) + (uTime * 0.03));
+    foil *= mix(1.15, 0.7, roughnessDetail) * (1.0 + normalDetail * 0.25);
+    vec3 rainbow = spectral((patternUv.x * 0.8) + (patternUv.y * 0.35) + (uTime * 0.03));
     vec3 foilColor = mix(uAccent, rainbow, uRainbow);
     vec3 color = foilColor * (foil + fresnel * uGlow * 0.6);
     float alpha = min(1.0, (foil * 0.8) + (fresnel * uGlow * 0.35));
@@ -62,6 +79,8 @@ export type FoilOverlayMaterial = THREE.ShaderMaterial & {
   uniforms: {
     uBaseMap: { value: THREE.Texture };
     uFoilMask: { value: THREE.Texture };
+    uRoughnessMap: { value: THREE.Texture };
+    uNormalMap: { value: THREE.Texture };
     uTime: { value: number };
     uSheen: { value: number };
     uRainbow: { value: number };
@@ -69,6 +88,7 @@ export type FoilOverlayMaterial = THREE.ShaderMaterial & {
     uFoilIntensity: { value: number };
     uFoilScale: { value: number };
     uFoilDetail: { value: number };
+    uCardAspect: { value: number };
     uAccent: { value: THREE.Color };
   };
 };
@@ -109,6 +129,8 @@ export function createFrontBaseMaterial(options: {
 export function createFoilOverlayMaterial(options: {
   baseTexture: THREE.Texture;
   foilMask: THREE.Texture;
+  roughnessMap: THREE.Texture;
+  normalMap: THREE.Texture;
   finish: FinishProfile;
   material: MaterialSettings;
   accent: string;
@@ -120,6 +142,8 @@ export function createFoilOverlayMaterial(options: {
     uniforms: {
       uBaseMap: { value: options.baseTexture },
       uFoilMask: { value: options.foilMask },
+      uRoughnessMap: { value: options.roughnessMap },
+      uNormalMap: { value: options.normalMap },
       uTime: { value: 0 },
       uSheen: { value: options.finish.sheen },
       uRainbow: { value: options.finish.rainbow },
@@ -127,11 +151,18 @@ export function createFoilOverlayMaterial(options: {
       uFoilIntensity: { value: options.material.foilIntensity },
       uFoilScale: { value: options.material.foilScale },
       uFoilDetail: { value: options.material.foilDetail },
+      uCardAspect: { value: CARD_MODEL.height / CARD_MODEL.width },
       uAccent: { value: new THREE.Color(options.accent) }
     },
     vertexShader: overlayVertexShader,
     fragmentShader: overlayFragmentShader
   });
+
+  material.depthTest = true;
+  material.depthWrite = false;
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = -1;
+  material.polygonOffsetUnits = -1;
 
   return material as FoilOverlayMaterial;
 }

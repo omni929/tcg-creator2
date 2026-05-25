@@ -18,7 +18,7 @@ import {
   createFrontBaseMaterial,
   type FoilOverlayMaterial
 } from "../lib/materials";
-import { createCardEdgeGeometry, createCardFaceGeometry, CARD_MODEL } from "../lib/shape";
+import { CARD_MODEL, CARD_RENDER_TRANSFORM, createCardEdgeGeometry, createCardFaceGeometry } from "../lib/shape";
 import {
   canvasToTexture,
   createProceduralFoilMaskTexture,
@@ -35,8 +35,6 @@ type TextureState = {
   normalMap: THREE.Texture;
   emissiveOverlay: THREE.Texture | null;
 };
-
-const PREVIEW_TARGET: [number, number, number] = [0, -0.4, 0];
 
 function disposeTextures(textures: TextureState | null): void {
   if (!textures) {
@@ -150,7 +148,7 @@ function CameraRig({
 
   useEffect(() => {
     camera.position.set(0, 0.1, viewPreset.distance);
-    camera.lookAt(...PREVIEW_TARGET);
+    camera.lookAt(...CARD_RENDER_TRANSFORM.cameraTarget);
     camera.updateProjectionMatrix();
   }, [camera, viewPreset.distance]);
 
@@ -205,6 +203,8 @@ function CardModel({
     return createFoilOverlayMaterial({
       baseTexture: textures.front,
       foilMask: textures.foilMask,
+      roughnessMap: textures.roughnessMap,
+      normalMap: textures.normalMap,
       finish,
       material: materialSettings,
       accent: theme.accent
@@ -260,7 +260,7 @@ function CardModel({
   return (
     <group
       ref={groupRef}
-      position={[0, 0.14, 0]}
+      position={CARD_RENDER_TRANSFORM.groupPosition}
       rotation={[viewPreset.rotationX, viewPreset.rotationY, -0.015]}
     >
       <mesh geometry={edgeGeometry} material={edgeMaterial} />
@@ -315,7 +315,7 @@ export function CardViewport({
           minPolarAngle={Math.PI / 2.12}
           maxPolarAngle={Math.PI / 1.88}
           rotateSpeed={0.65}
-          target={PREVIEW_TARGET}
+          target={CARD_RENDER_TRANSFORM.cameraTarget}
         />
       ) : null}
     </Canvas>

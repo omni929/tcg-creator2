@@ -16,7 +16,7 @@ import {
   createFoilOverlayMaterial,
   createFrontBaseMaterial
 } from "./materials";
-import { createCardEdgeGeometry, createCardFaceGeometry, CARD_MODEL } from "./shape";
+import { CARD_MODEL, CARD_RENDER_TRANSFORM, createCardEdgeGeometry, createCardFaceGeometry } from "./shape";
 import {
   canvasToTexture,
   createProceduralFoilMaskTexture,
@@ -95,6 +95,8 @@ async function buildCardMeshes(project: CardProject): Promise<THREE.Group> {
     createFoilOverlayMaterial({
       baseTexture: frontTexture,
       foilMask,
+      roughnessMap,
+      normalMap,
       finish,
       material: materialSettings,
       accent: theme.accent
@@ -158,7 +160,7 @@ export async function renderCard(
   const viewPreset = getViewPreset(project.viewPresetId);
 
   camera.position.set(0, 0.1, viewPreset.distance);
-  camera.lookAt(0, 0, 0);
+  camera.lookAt(...CARD_RENDER_TRANSFORM.cameraTarget);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = pmrem.fromScene(new RoomEnvironment(), 0.03).texture;
@@ -180,7 +182,7 @@ export async function renderCard(
   scene.add(rim);
 
   const group = await buildCardMeshes(project);
-  group.position.set(0, -0.02, 0);
+  group.position.set(...CARD_RENDER_TRANSFORM.groupPosition);
   group.rotation.x = viewPreset.rotationX;
   group.rotation.y = viewPreset.rotationY;
   group.rotation.z = -0.015;

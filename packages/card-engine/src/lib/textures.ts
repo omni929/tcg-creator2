@@ -1,3 +1,4 @@
+import { CARD_CANVAS } from "@card-pipeline/schema";
 import * as THREE from "three";
 
 export function canvasToTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
@@ -135,5 +136,66 @@ export function createProceduralNormalTexture(size = 1024): THREE.CanvasTexture 
   ctx.putImageData(imageData, 0, 0);
   const texture = canvasToTexture(canvas);
   texture.colorSpace = THREE.NoColorSpace;
+  return texture;
+}
+
+export function createCardUvDebugTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = CARD_CANVAS.width;
+  canvas.height = CARD_CANVAS.height;
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    return canvasToTexture(canvas);
+  }
+
+  const checker = 100;
+  for (let y = 0; y < canvas.height; y += checker) {
+    for (let x = 0; x < canvas.width; x += checker) {
+      ctx.fillStyle = (x / checker + y / checker) % 2 === 0 ? "#f8fafc" : "#cbd5e1";
+      ctx.fillRect(x, y, checker, checker);
+    }
+  }
+
+  ctx.lineWidth = 18;
+  ctx.strokeStyle = "#0f172a";
+  ctx.strokeRect(9, 9, canvas.width - 18, canvas.height - 18);
+
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = "#ef4444";
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(canvas.width, canvas.height);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#2563eb";
+  ctx.beginPath();
+  ctx.moveTo(canvas.width, 0);
+  ctx.lineTo(0, canvas.height);
+  ctx.stroke();
+
+  const corners = [
+    { label: "TOP LEFT", x: 24, y: 48, color: "#dc2626" },
+    { label: "TOP RIGHT", x: canvas.width - 360, y: 48, color: "#16a34a" },
+    { label: "BOTTOM LEFT", x: 24, y: canvas.height - 72, color: "#2563eb" },
+    { label: "BOTTOM RIGHT", x: canvas.width - 430, y: canvas.height - 72, color: "#ca8a04" }
+  ];
+
+  ctx.font = "700 48px sans-serif";
+  for (const corner of corners) {
+    ctx.fillStyle = corner.color;
+    ctx.fillRect(corner.x - 12, corner.y - 48, 400, 68);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(corner.label, corner.x, corner.y);
+  }
+
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(canvas.width / 2 - 6, 0, 12, canvas.height);
+  ctx.fillRect(0, canvas.height / 2 - 6, canvas.width, 12);
+
+  const texture = canvasToTexture(canvas);
+  texture.userData.cardUvDebug = {
+    purpose: "Checks that full 1400x2000 card-space UVs align with the rounded 3D card face and foil mask."
+  };
   return texture;
 }
