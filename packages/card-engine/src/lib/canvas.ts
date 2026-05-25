@@ -1,5 +1,6 @@
 import {
   CARD_CANVAS,
+  type ArtFitMode,
   type CardProject,
   type ThemeDefinition,
   getFinishProfile,
@@ -11,6 +12,14 @@ const SUBTITLE_FONT = `700 30px "Segoe UI", Arial, sans-serif`;
 const BODY_FONT = `500 34px "Segoe UI", Arial, sans-serif`;
 const META_FONT = `800 24px "Consolas", "Courier New", monospace`;
 const BADGE_FONT = `900 22px "Segoe UI", Arial, sans-serif`;
+
+type DrawZone = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+};
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
@@ -194,6 +203,52 @@ function drawFallbackFrame(ctx: CanvasRenderingContext2D, theme: ThemeDefinition
   ctx.restore();
 }
 
+function getAutoFitScore(imageAspect: number, targetAspect: number): number {
+  return Math.abs(Math.log(imageAspect / targetAspect));
+}
+
+function resolveFrontArtFitMode(
+  project: CardProject,
+  theme: ThemeDefinition,
+  imageWidth: number,
+  imageHeight: number
+): Exclude<ArtFitMode, "auto"> {
+  if (project.artPlacement.fitMode !== "auto") {
+    return project.artPlacement.fitMode;
+  }
+
+  const imageAspect = imageWidth / imageHeight;
+  const cardAspect = CARD_CANVAS.width / CARD_CANVAS.height;
+  const artZoneAspect = theme.artZone.width / theme.artZone.height;
+
+  return getAutoFitScore(imageAspect, cardAspect) <= getAutoFitScore(imageAspect, artZoneAspect)
+    ? "full-card"
+    : "art-zone";
+}
+
+function getFrontArtDrawZone(
+  theme: ThemeDefinition,
+  fitMode: Exclude<ArtFitMode, "auto">
+): DrawZone {
+  if (fitMode === "full-card") {
+    return {
+      x: 0,
+      y: 0,
+      width: CARD_CANVAS.width,
+      height: CARD_CANVAS.height,
+      radius: CARD_CANVAS.radius
+    };
+  }
+
+  return {
+    x: theme.artZone.x,
+    y: theme.artZone.y,
+    width: theme.artZone.width,
+    height: theme.artZone.height,
+    radius: 30
+  };
+}
+
 function drawBackPattern(ctx: CanvasRenderingContext2D, theme: ThemeDefinition): void {
   const centerX = CARD_CANVAS.width / 2;
   const centerY = CARD_CANVAS.height / 2;
@@ -231,6 +286,8 @@ export async function composeFrontCanvas(project: CardProject): Promise<HTMLCanv
 
   const theme = getTheme(project.themeId);
   const finish = getFinishProfile(project.finishId);
+  const artZone = theme.artZone;
+  let frontArtFitMode: Exclude<ArtFitMode, "auto"> = "art-zone";
 
   const baseGradient = ctx.createLinearGradient(0, 0, 0, CARD_CANVAS.height);
   baseGradient.addColorStop(0, theme.backgroundTop);
@@ -238,83 +295,92 @@ export async function composeFrontCanvas(project: CardProject): Promise<HTMLCanv
   ctx.fillStyle = baseGradient;
   ctx.fillRect(0, 0, CARD_CANVAS.width, CARD_CANVAS.height);
 
-  const artZone = theme.artZone;
-  ctx.save();
-  roundedRectPath(ctx, artZone.x, artZone.y, artZone.width, artZone.height, 30);
-  ctx.clip();
-
   if (project.assets.frontArt?.src) {
     const artImage = await loadImage(project.assets.frontArt.src);
+    frontArtFitMode = resolveFrontArtFitMode(project, theme, artImage.width, artImage.height);
+    const drawZone = getFrontArtDrawZone(theme, frontArtFitMode);
+
+    ctx.save();
+    roundedRectPath(ctx, drawZone.x, drawZone.y, drawZone.width, drawZone.height, drawZone.radius);
+    ctx.clip();
     drawCoverImage(
       ctx,
       artImage,
-      artZone.x,
-      artZone.y,
-      artZone.width,
-      artZone.height,
+      drawZone.x,
+      drawZone.y,
+      drawZone.width,
+      drawZone.height,
       project.artPlacement.scale,
       project.artPlacement.offsetX,
       project.artPlacement.offsetY
     );
+    ctx.restore();
   } else {
+    ctx.save();
+    roundedRectPath(ctx, artZone.x, artZone.y, artZone.width, artZone.height, 30);
+    ctx.clip();
     drawGeneratedArt(ctx, artZone.x, artZone.y, artZone.width, artZone.height, theme);
+    ctx.restore();
   }
-  ctx.restore();
 
-  ctx.save();
-  roundedRectPath(ctx, artZone.x, artZone.y, artZone.width, artZone.height, 30);
-  ctx.strokeStyle = "rgba(255,255,255,0.24)";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.restore();
+  if (frontArtFitMode !== "full-card") {
+    ctx.save();
+    roundedRectPath(ctx, artZone.x, artZone.y, artZone.width, artZone.height, 30);
+    ctx.strokeStyle = "rgba(255,255,255,0.24)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if (project.assets.frontFrame?.src) {
     const frameImage = await loadImage(project.assets.frontFrame.src);
     ctx.drawImage(frameImage, 0, 0, CARD_CANVAS.width, CARD_CANVAS.height);
-  } else {
+  } else if (frontArtFitMode !== "full-card") {
     drawFallbackFrame(ctx, theme);
   }
 
-  const titleZone = theme.titleZone;
-  ctx.fillStyle = "#ffffff";
-  ctx.font = TITLE_FONT;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText(project.content.name.toUpperCase(), titleZone.x, titleZone.y, titleZone.width);
+  if (frontArtFitMode !== "full-card") {
+    const titleZone = theme.titleZone;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = TITLE_FONT;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(project.content.name.toUpperCase(), titleZone.x, titleZone.y, titleZone.width);
 
-  ctx.fillStyle = `${theme.accent}CC`;
-  ctx.font = SUBTITLE_FONT;
-  ctx.fillText(project.content.subtitle.toUpperCase(), titleZone.x + 2, titleZone.y + 96, titleZone.width);
+    ctx.fillStyle = `${theme.accent}CC`;
+    ctx.font = SUBTITLE_FONT;
+    ctx.fillText(project.content.subtitle.toUpperCase(), titleZone.x + 2, titleZone.y + 96, titleZone.width);
 
-  drawBadge(ctx, theme, project.content.badge, project.content.rarity);
+    drawBadge(ctx, theme, project.content.badge, project.content.rarity);
 
-  const flavorZone = theme.flavorZone;
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.font = BODY_FONT;
-  const lines = wrapText(ctx, project.content.flavorText, flavorZone.width - 40);
-  let textY = flavorZone.y + 34;
-  for (const line of lines.slice(0, 4)) {
-    ctx.fillText(line, flavorZone.x + 20, textY);
-    textY += 46;
+    const flavorZone = theme.flavorZone;
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.font = BODY_FONT;
+    const lines = wrapText(ctx, project.content.flavorText, flavorZone.width - 40);
+    let textY = flavorZone.y + 34;
+    for (const line of lines.slice(0, 4)) {
+      ctx.fillText(line, flavorZone.x + 20, textY);
+      textY += 46;
+    }
+
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(flavorZone.x + 20, flavorZone.y + flavorZone.height - 80);
+    ctx.lineTo(flavorZone.x + flavorZone.width - 20, flavorZone.y + flavorZone.height - 80);
+    ctx.stroke();
+
+    ctx.fillStyle = theme.accent;
+    ctx.font = META_FONT;
+    ctx.fillText(project.content.serial, flavorZone.x + 20, flavorZone.y + flavorZone.height - 46);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.fillText(
+      `${project.content.setCode} / ${project.content.artistCredit}`,
+      flavorZone.x + flavorZone.width - 20,
+      flavorZone.y + flavorZone.height - 46
+    );
   }
-
-  ctx.strokeStyle = "rgba(255,255,255,0.1)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(flavorZone.x + 20, flavorZone.y + flavorZone.height - 80);
-  ctx.lineTo(flavorZone.x + flavorZone.width - 20, flavorZone.y + flavorZone.height - 80);
-  ctx.stroke();
-
-  ctx.fillStyle = theme.accent;
-  ctx.font = META_FONT;
-  ctx.fillText(project.content.serial, flavorZone.x + 20, flavorZone.y + flavorZone.height - 46);
-  ctx.textAlign = "right";
-  ctx.fillStyle = "rgba(255,255,255,0.8)";
-  ctx.fillText(
-    `${project.content.setCode} / ${project.content.artistCredit}`,
-    flavorZone.x + flavorZone.width - 20,
-    flavorZone.y + flavorZone.height - 46
-  );
 
   ctx.globalCompositeOperation = "screen";
   ctx.globalAlpha = Math.min(0.28, finish.glow + 0.08);

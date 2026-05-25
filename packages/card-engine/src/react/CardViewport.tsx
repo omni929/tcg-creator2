@@ -36,6 +36,8 @@ type TextureState = {
   emissiveOverlay: THREE.Texture | null;
 };
 
+const PREVIEW_TARGET: [number, number, number] = [0, -0.4, 0];
+
 function disposeTextures(textures: TextureState | null): void {
   if (!textures) {
     return;
@@ -148,7 +150,7 @@ function CameraRig({
 
   useEffect(() => {
     camera.position.set(0, 0.1, viewPreset.distance);
-    camera.lookAt(0, 0, 0);
+    camera.lookAt(...PREVIEW_TARGET);
     camera.updateProjectionMatrix();
   }, [camera, viewPreset.distance]);
 
@@ -258,7 +260,7 @@ function CardModel({
   return (
     <group
       ref={groupRef}
-      position={[0, -0.02, 0]}
+      position={[0, 0.14, 0]}
       rotation={[viewPreset.rotationX, viewPreset.rotationY, -0.015]}
     >
       <mesh geometry={edgeGeometry} material={edgeMaterial} />
@@ -309,13 +311,11 @@ export function CardViewport({
           dampingFactor={0.08}
           zoomSpeed={0.85}
           minDistance={Math.max(7.6, viewPreset.distance - 1.9)}
-          maxDistance={viewPreset.distance + 4.2}
+          maxDistance={viewPreset.distance + 9.5}
           minPolarAngle={Math.PI / 2.12}
           maxPolarAngle={Math.PI / 1.88}
-          minAzimuthAngle={-0.6}
-          maxAzimuthAngle={0.6}
           rotateSpeed={0.65}
-          target={[0, 0, 0]}
+          target={PREVIEW_TARGET}
         />
       ) : null}
     </Canvas>

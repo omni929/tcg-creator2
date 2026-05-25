@@ -12,6 +12,8 @@ export type AssetSource = {
   name?: string;
 };
 
+export type ArtFitMode = "auto" | "art-zone" | "full-card";
+
 export type CardAssets = {
   frontArt?: AssetSource;
   frontFrame?: AssetSource;
@@ -34,6 +36,7 @@ export type CardContent = {
 };
 
 export type ArtPlacement = {
+  fitMode: ArtFitMode;
   scale: number;
   offsetX: number;
   offsetY: number;
@@ -206,6 +209,7 @@ export const DEFAULT_PROJECT: CardProject = {
   },
   assets: {},
   artPlacement: {
+    fitMode: "auto",
     scale: 1,
     offsetX: 0,
     offsetY: 0

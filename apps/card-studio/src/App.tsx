@@ -6,6 +6,7 @@ import {
   FINISH_PROFILES,
   THEMES,
   VIEW_PRESETS,
+  type ArtFitMode,
   type CardProject,
   type MaterialSettings
 } from "@card-pipeline/schema";
@@ -124,6 +125,12 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
       }
     })
   }
+];
+
+const FRONT_ART_FIT_MODES: Array<{ value: ArtFitMode; label: string }> = [
+  { value: "auto", label: "Auto Detect" },
+  { value: "full-card", label: "Full Card" },
+  { value: "art-zone", label: "Inner Art Window" }
 ];
 
 function normalizeProject(input: ProjectLike): CardProject {
@@ -276,7 +283,13 @@ function App(): ReactElement {
         assets: {
           ...current.assets,
           [slot]: { src, name: file.name }
-        }
+        },
+        artPlacement:
+          slot === "frontArt"
+            ? {
+                ...DEFAULT_PROJECT.artPlacement
+              }
+            : current.artPlacement
       }));
       setMessage(`${labelFromSlot(slot)} updated.`);
     } finally {
@@ -290,9 +303,25 @@ function App(): ReactElement {
       assets: {
         ...current.assets,
         [slot]: undefined
-      }
+      },
+      artPlacement:
+        slot === "frontArt"
+          ? {
+              ...DEFAULT_PROJECT.artPlacement
+            }
+          : current.artPlacement
     }));
     setMessage(`${labelFromSlot(slot)} cleared.`);
+  }
+
+  function resetFrontArtPlacement(): void {
+    patchProject((current) => ({
+      ...current,
+      artPlacement: {
+        ...DEFAULT_PROJECT.artPlacement
+      }
+    }));
+    setMessage("Front art fit reset.");
   }
 
   async function handleProjectImport(file: File | undefined): Promise<void> {
@@ -757,6 +786,27 @@ function App(): ReactElement {
                     ))}
                   </select>
                 </label>
+                <label>
+                  Front Art Fit
+                  <select
+                    value={project.artPlacement.fitMode}
+                    onChange={(event) =>
+                      patchProject((current) => ({
+                        ...current,
+                        artPlacement: {
+                          ...current.artPlacement,
+                          fitMode: event.target.value as ArtFitMode
+                        }
+                      }))
+                    }
+                  >
+                    {FRONT_ART_FIT_MODES.map((mode) => (
+                      <option key={mode.value} value={mode.value}>
+                        {mode.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <RangeField
                   label="Art Scale"
                   value={project.artPlacement.scale}
@@ -796,6 +846,14 @@ function App(): ReactElement {
                     }))
                   }
                 />
+              </div>
+              <p className="muted">
+                Auto Detect will fill the whole card when you upload a full finished card image, or just the inner art window when you upload regular art.
+              </p>
+              <div className="button-row">
+                <button className="ghost-button" type="button" onClick={resetFrontArtPlacement}>
+                  Reset Art Fit
+                </button>
               </div>
             </section>
           </>
