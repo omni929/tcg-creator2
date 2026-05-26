@@ -1,6 +1,5 @@
 import { CardViewport, renderCard } from "@card-pipeline/engine";
 import {
-  DEFAULT_MATERIAL_SETTINGS,
   DEFAULT_PROJECT,
   EXPORT_PRESETS,
   FINISH_PROFILES,
@@ -8,258 +7,32 @@ import {
   VIEW_PRESETS,
   type ArtFitMode,
   type CardProject,
-  type MaterialSettings,
-  type ViewRotation,
-  getViewPreset
+  type ViewRotation
 } from "@card-pipeline/schema";
 import { startTransition, useMemo, useState, type ReactElement } from "react";
+import {
+  type BatchEntry,
+  type ProjectLike,
+  cloneProject,
+  createBatchId,
+  defaultViewRotation,
+  normalizeProject
+} from "./domain/card-project";
+import {
+  type AssetSlot,
+  type StudioTab,
+  FRONT_ART_FIT_MODES,
+  PRIMARY_ASSETS,
+  STUDIO_TABS,
+  SURFACE_ASSETS,
+  TEMPLATE_PRESETS,
+  labelFromSlot
+} from "./domain/studio-config";
 import { downloadBlob, fileToDataUrl, fileToText, safeFileBaseName } from "./lib/file";
-
-type AssetSlot = Extract<keyof CardProject["assets"], string>;
-type StudioTab = "workflow" | "content" | "surface" | "batch";
-type ProjectLike = Partial<CardProject> & {
-  content?: Partial<CardProject["content"]>;
-  assets?: Partial<CardProject["assets"]>;
-  artPlacement?: Partial<CardProject["artPlacement"]>;
-  framePlacement?: Partial<CardProject["framePlacement"]>;
-  viewRotation?: Partial<ViewRotation>;
-  material?: Partial<MaterialSettings>;
-};
-
-type BatchEntry = {
-  id: string;
-  name: string;
-  project: CardProject;
-};
-
-type TemplatePreset = {
-  id: string;
-  label: string;
-  description: string;
-  apply: (project: CardProject) => CardProject;
-};
-
-const STUDIO_TABS: Array<{ id: StudioTab; label: string }> = [
-  { id: "workflow", label: "Workflow" },
-  { id: "content", label: "Content" },
-  { id: "surface", label: "Surface" },
-  { id: "batch", label: "Batch" }
-];
-
-const PRIMARY_ASSETS: Array<{
-  slot: AssetSlot;
-  label: string;
-  hint: string;
-}> = [
-  { slot: "frontArt", label: "Front Art", hint: "Main character or product art." },
-  { slot: "frontFrame", label: "Front Frame", hint: "Border, UI frame, logos, and foil windows." },
-  { slot: "backArt", label: "Back Art", hint: "Card back image or full back design." }
-];
-
-const SURFACE_ASSETS: Array<{
-  slot: AssetSlot;
-  label: string;
-  hint: string;
-}> = [
-  { slot: "foilMask", label: "Foil Mask", hint: "White = shiny areas. Black = no foil." },
-  { slot: "roughnessMap", label: "Roughness Map", hint: "Controls matte vs glossy patches." },
-  { slot: "normalMap", label: "Normal Map", hint: "Adds embossed-looking surface detail." },
-  { slot: "emissiveOverlay", label: "Glow Overlay", hint: "Optional glow accents on the front." }
-];
-
-const TEMPLATE_PRESETS: TemplatePreset[] = [
-  {
-    id: "marketplace-hero",
-    label: "Marketplace Hero",
-    description: "Balanced premium showcase for listings.",
-    apply: (project) => ({
-      ...project,
-      themeId: "obsidian",
-      finishId: "holo",
-      viewPresetId: "hero",
-      viewRotation: defaultViewRotation("hero"),
-      exportPresetId: "marketplace-png",
-      showTiltPreview: true,
-      material: {
-        ...project.material,
-        foilIntensity: 1.08,
-        foilScale: 1.05,
-        foilDetail: 0.58,
-        clearcoat: 0.9
-      }
-    })
-  },
-  {
-    id: "clean-catalog",
-    label: "Clean Catalog",
-    description: "Straight clean view for shops and product pages.",
-    apply: (project) => ({
-      ...project,
-      themeId: "aurora",
-      finishId: "gloss",
-      viewPresetId: "front",
-      viewRotation: defaultViewRotation("front"),
-      exportPresetId: "product-webp",
-      showTiltPreview: false,
-      material: {
-        ...project.material,
-        foilIntensity: 0.5,
-        foilScale: 1,
-        foilDetail: 0.32,
-        roughnessShift: 0.08
-      }
-    })
-  },
-  {
-    id: "chase-foil",
-    label: "Chase Foil",
-    description: "Higher drama for premium inserts and chase cards.",
-    apply: (project) => ({
-      ...project,
-      themeId: "obsidian",
-      finishId: "spectral",
-      viewPresetId: "dramatic",
-      viewRotation: defaultViewRotation("dramatic"),
-      exportPresetId: "print-large",
-      showTiltPreview: true,
-      material: {
-        ...project.material,
-        foilIntensity: 1.35,
-        foilScale: 1.3,
-        foilDetail: 0.82,
-        metalnessShift: 0.16,
-        emissiveStrength: 0.16
-      }
-    })
-  }
-];
-
-const FRONT_ART_FIT_MODES: Array<{ value: ArtFitMode; label: string }> = [
-  { value: "auto", label: "Auto Detect" },
-  { value: "full-card", label: "Full Card" },
-  { value: "art-zone", label: "Inner Art Window" }
-];
+import { AssetCard } from "./ui/AssetCard";
+import { RangeField } from "./ui/RangeField";
 
 const ROTATION_STEP = Math.PI / 12;
-const DEFAULT_ROLL = -0.015;
-
-function defaultViewRotation(viewPresetId: string): ViewRotation {
-  const preset = getViewPreset(viewPresetId);
-  return {
-    x: preset.rotationX,
-    y: preset.rotationY,
-    z: DEFAULT_ROLL
-  };
-}
-
-function normalizeProject(input: ProjectLike): CardProject {
-  const viewPresetId = input.viewPresetId ?? DEFAULT_PROJECT.viewPresetId;
-  const fallbackRotation = defaultViewRotation(viewPresetId);
-
-  return {
-    ...DEFAULT_PROJECT,
-    ...input,
-    content: {
-      ...DEFAULT_PROJECT.content,
-      ...input.content
-    },
-    assets: {
-      ...DEFAULT_PROJECT.assets,
-      ...input.assets
-    },
-    artPlacement: {
-      ...DEFAULT_PROJECT.artPlacement,
-      ...input.artPlacement
-    },
-    framePlacement: {
-      ...DEFAULT_PROJECT.framePlacement,
-      ...input.framePlacement
-    },
-    viewRotation: {
-      ...fallbackRotation,
-      ...input.viewRotation
-    },
-    material: {
-      ...DEFAULT_MATERIAL_SETTINGS,
-      ...DEFAULT_PROJECT.material,
-      ...input.material
-    }
-  };
-}
-
-function cloneProject(project: CardProject): CardProject {
-  return normalizeProject(JSON.parse(JSON.stringify(project)) as ProjectLike);
-}
-
-function createBatchId(): string {
-  return `batch-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function AssetCard({
-  label,
-  hint,
-  fileName,
-  onUpload,
-  onClear
-}: {
-  label: string;
-  hint: string;
-  fileName?: string;
-  onUpload: (file: File | undefined) => void;
-  onClear?: () => void;
-}): ReactElement {
-  return (
-    <div className="asset-card">
-      <div className="asset-copy">
-        <strong>{label}</strong>
-        <p>{fileName ?? hint}</p>
-      </div>
-      <div className="asset-actions">
-        <label className="upload-button">
-          Upload
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={(event) => onUpload(event.target.files?.[0])}
-          />
-        </label>
-        {onClear ? (
-          <button className="ghost-button" type="button" onClick={onClear}>
-            Clear
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function RangeField({
-  label,
-  value,
-  min,
-  max,
-  step,
-  format,
-  onChange
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  format?: (value: number) => string;
-  onChange: (value: number) => void;
-}): ReactElement {
-  return (
-    <label className="range-field">
-      <span className="range-header">
-        <span>{label}</span>
-        <strong>{format ? format(value) : value.toFixed(2)}</strong>
-      </span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
-    </label>
-  );
-}
 
 function App(): ReactElement {
   const [project, setProject] = useState<CardProject>(() => normalizeProject(DEFAULT_PROJECT));
@@ -1147,11 +920,6 @@ function App(): ReactElement {
       </aside>
     </div>
   );
-}
-
-function labelFromSlot(slot: AssetSlot): string {
-  const asset = [...PRIMARY_ASSETS, ...SURFACE_ASSETS].find((entry) => entry.slot === slot);
-  return asset?.label ?? slot;
 }
 
 export default App;
