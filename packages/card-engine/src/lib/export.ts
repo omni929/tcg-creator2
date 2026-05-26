@@ -31,6 +31,7 @@ function buildRenderer(width: number, height: number, exposure: number): THREE.W
     canvas,
     antialias: true,
     alpha: true,
+    powerPreference: "high-performance",
     preserveDrawingBuffer: true
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;

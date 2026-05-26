@@ -1,4 +1,4 @@
-import { CARD_CANVAS } from "@card-pipeline/schema";
+import { CARD_CANVAS, type CardProject, type FoilMaskPattern, getTheme } from "@card-pipeline/schema";
 import * as THREE from "three";
 
 export function canvasToTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
@@ -41,6 +41,91 @@ function createCanvas(size: number): HTMLCanvasElement {
   return canvas;
 }
 
+function createSizedCanvas(width: number, height: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+): void {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawFoilMaskPattern(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  pattern: FoilMaskPattern,
+  project?: CardProject
+): void {
+  ctx.fillStyle = "#121212";
+  ctx.fillRect(0, 0, width, height);
+
+  if (pattern === "spotlight-burst") {
+    const glow = ctx.createRadialGradient(width * 0.5, height * 0.42, 20, width * 0.5, height * 0.42, width * 0.62);
+    glow.addColorStop(0, "rgba(255,255,255,0.96)");
+    glow.addColorStop(0.44, "rgba(255,255,255,0.46)");
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  if (pattern === "border-glints") {
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.lineWidth = Math.max(12, width * 0.018);
+    drawRoundedRect(ctx, width * 0.035, height * 0.025, width * 0.93, height * 0.95, width * 0.04);
+    ctx.stroke();
+  }
+
+  if (pattern === "text-safe-sheen" && project) {
+    const theme = getTheme(project.themeId);
+    const zones = [project.layout.titleZone ?? theme.titleZone, project.layout.flavorZone ?? theme.flavorZone];
+    ctx.fillStyle = "rgba(255,255,255,0.48)";
+    for (const zone of zones) {
+      drawRoundedRect(
+        ctx,
+        (zone.x / CARD_CANVAS.width) * width,
+        (zone.y / CARD_CANVAS.height) * height,
+        (zone.width / CARD_CANVAS.width) * width,
+        (zone.height / CARD_CANVAS.height) * height,
+        Math.max(12, width * 0.018)
+      );
+      ctx.fill();
+    }
+  }
+
+  ctx.globalAlpha = pattern === "diagonal-prism" ? 0.92 : 0.58;
+  for (let index = -height; index < width * 1.4; index += width * 0.07) {
+    const gradient = ctx.createLinearGradient(index, 0, index + width * 0.12, height);
+    gradient.addColorStop(0, "rgba(255,255,255,0)");
+    gradient.addColorStop(0.48, "rgba(255,255,255,0.9)");
+    gradient.addColorStop(0.58, "rgba(255,255,255,0.25)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(index, 0, width * 0.12, height);
+  }
+
+  ctx.globalAlpha = 1;
+}
+
 export function createProceduralFoilMaskTexture(size = 1024): THREE.CanvasTexture {
   const canvas = createCanvas(size);
   const ctx = canvas.getContext("2d");
@@ -49,19 +134,7 @@ export function createProceduralFoilMaskTexture(size = 1024): THREE.CanvasTextur
     return canvasToTexture(canvas);
   }
 
-  ctx.fillStyle = "#202020";
-  ctx.fillRect(0, 0, size, size);
-
-  ctx.globalAlpha = 0.92;
-  for (let index = -size; index < size * 1.4; index += 84) {
-    const gradient = ctx.createLinearGradient(index, 0, index + 120, size);
-    gradient.addColorStop(0, "rgba(255,255,255,0)");
-    gradient.addColorStop(0.45, "rgba(255,255,255,0.92)");
-    gradient.addColorStop(0.55, "rgba(255,255,255,0.28)");
-    gradient.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(index, 0, 120, size);
-  }
+  drawFoilMaskPattern(ctx, size, size, "diagonal-prism");
 
   ctx.globalAlpha = 0.4;
   for (let index = 0; index < 18; index += 1) {
@@ -77,6 +150,23 @@ export function createProceduralFoilMaskTexture(size = 1024): THREE.CanvasTextur
   const texture = canvasToTexture(canvas);
   texture.colorSpace = THREE.NoColorSpace;
   return texture;
+}
+
+export function generateFoilMaskDataUrl(
+  pattern: FoilMaskPattern,
+  project?: CardProject,
+  width = CARD_CANVAS.width,
+  height = CARD_CANVAS.height
+): string {
+  const canvas = createSizedCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("Unable to create foil mask canvas context");
+  }
+
+  drawFoilMaskPattern(ctx, width, height, pattern, project);
+  return canvas.toDataURL("image/png");
 }
 
 export function createProceduralRoughnessTexture(size = 1024): THREE.CanvasTexture {

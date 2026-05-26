@@ -7,6 +7,26 @@ const enginePath = fileURLToPath(new URL("../../packages/card-engine/src/index.t
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/three/examples")) {
+            return "three-examples";
+          }
+          if (id.includes("node_modules/three")) {
+            return "three-core";
+          }
+          if (id.includes("@react-three")) {
+            return "three-react";
+          }
+          if (id.includes("node_modules")) {
+            return "vendor";
+          }
+        }
+      }
+    }
+  },
   resolve: {
     alias: {
       "@card-pipeline/schema": schemaPath,

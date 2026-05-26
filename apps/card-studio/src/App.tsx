@@ -1,4 +1,3 @@
-import { CardViewport, renderCard } from "@card-pipeline/engine";
 import {
   DEFAULT_PROJECT,
   EXPORT_PRESETS,
@@ -7,9 +6,12 @@ import {
   VIEW_PRESETS,
   type ArtFitMode,
   type CardProject,
+  type EditableLayoutZoneId,
+  type FoilMaskPattern,
+  type TextZone,
   type ViewRotation
 } from "@card-pipeline/schema";
-import { startTransition, useMemo, useState, type ReactElement } from "react";
+import { lazy, startTransition, Suspense, useMemo, useState, type ReactElement } from "react";
 import {
   type BatchEntry,
   type ProjectLike,
@@ -22,6 +24,9 @@ import {
   type AssetSlot,
   type StudioTab,
   FRONT_ART_FIT_MODES,
+  FOIL_MASK_PATTERNS,
+  LAYOUT_ZONES,
+  POST_READY_EXPORT_IDS,
   PRIMARY_ASSETS,
   STUDIO_TABS,
   SURFACE_ASSETS,
@@ -30,9 +35,15 @@ import {
 } from "./domain/studio-config";
 import { downloadBlob, fileToDataUrl, fileToText, safeFileBaseName } from "./lib/file";
 import { AssetCard } from "./ui/AssetCard";
+import { LayoutZoneEditor, type LayoutZoneBounds } from "./ui/LayoutZoneEditor";
 import { RangeField } from "./ui/RangeField";
 
 const ROTATION_STEP = Math.PI / 12;
+const CardViewport = lazy(() =>
+  import("@card-pipeline/engine").then((module) => ({
+    default: module.CardViewport
+  }))
+);
 
 function App(): ReactElement {
   const [project, setProject] = useState<CardProject>(() => normalizeProject(DEFAULT_PROJECT));
@@ -40,6 +51,8 @@ function App(): ReactElement {
   const [message, setMessage] = useState<string>("Ready to build premium cards.");
   const [activeTab, setActiveTab] = useState<StudioTab>("workflow");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(TEMPLATE_PRESETS[0]?.id ?? "");
+  const [selectedLayoutZoneId, setSelectedLayoutZoneId] = useState<EditableLayoutZoneId>("artZone");
+  const [selectedFoilPattern, setSelectedFoilPattern] = useState<FoilMaskPattern>("diagonal-prism");
   const [batchEntries, setBatchEntries] = useState<BatchEntry[]>([]);
 
   const activeTheme = useMemo(
@@ -57,6 +70,7 @@ function App(): ReactElement {
     [project.finishId]
   );
 
+  const selectedLayoutZone = project.layout[selectedLayoutZoneId] ?? activeTheme[selectedLayoutZoneId];
   const primaryAssetCount = PRIMARY_ASSETS.filter(({ slot }) => Boolean(project.assets[slot]?.src)).length;
   const surfaceAssetCount = SURFACE_ASSETS.filter(({ slot }) => Boolean(project.assets[slot]?.src)).length;
 
@@ -195,11 +209,42 @@ function App(): ReactElement {
   async function handleRenderExport(): Promise<void> {
     setBusyLabel("Rendering export...");
     try {
+      const { renderCard } = await import("@card-pipeline/engine");
       const blob = await renderCard(project, activePreset);
       downloadBlob(blob, `${safeFileBaseName(project.content.name)}-${activePreset.id}.${activePreset.format}`);
       setMessage(`Exported ${activePreset.label}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Export failed.");
+    } finally {
+      setBusyLabel("");
+    }
+  }
+
+  async function handlePostReadyRender(): Promise<void> {
+    setBusyLabel("Rendering post-ready files...");
+    try {
+      const { renderCard } = await import("@card-pipeline/engine");
+      for (let index = 0; index < POST_READY_EXPORT_IDS.length; index += 1) {
+        const presetId = POST_READY_EXPORT_IDS[index];
+        const preset = EXPORT_PRESETS.find((candidate) => candidate.id === presetId);
+        if (!preset) {
+          continue;
+        }
+        setBusyLabel(`Post render ${index + 1}/${POST_READY_EXPORT_IDS.length}...`);
+        const blob = await renderCard(
+          {
+            ...project,
+            exportPresetId: preset.id,
+            viewPresetId: preset.id === "story-png" ? "dramatic" : project.viewPresetId
+          },
+          preset
+        );
+        downloadBlob(blob, `${safeFileBaseName(project.content.name)}-${preset.id}.${preset.format}`);
+        await new Promise((resolve) => window.setTimeout(resolve, 120));
+      }
+      setMessage("Post-ready renders downloaded.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Post-ready render failed.");
     } finally {
       setBusyLabel("");
     }
@@ -291,6 +336,7 @@ function App(): ReactElement {
         const preset =
           EXPORT_PRESETS.find((candidate) => candidate.id === entry.project.exportPresetId) ?? EXPORT_PRESETS[0];
         setBusyLabel(`Rendering ${index + 1}/${batchEntries.length}...`);
+        const { renderCard } = await import("@card-pipeline/engine");
         const blob = await renderCard(entry.project, preset);
         downloadBlob(blob, `${safeFileBaseName(entry.name)}-${preset.id}.${preset.format}`);
         await new Promise((resolve) => window.setTimeout(resolve, 120));
@@ -311,6 +357,66 @@ function App(): ReactElement {
 
     patchProject((current) => template.apply(current));
     setMessage(`${template.label} applied.`);
+  }
+
+  function updateLayoutZone(zoneId: EditableLayoutZoneId, zone: TextZone): void {
+    patchProject((current) => ({
+      ...current,
+      layout: {
+        ...current.layout,
+        [zoneId]: {
+          x: Math.round(zone.x),
+          y: Math.round(zone.y),
+          width: Math.round(zone.width),
+          height: Math.round(zone.height)
+        }
+      }
+    }));
+  }
+
+  function moveLayoutZone(zoneId: string, bounds: LayoutZoneBounds): void {
+    updateLayoutZone(zoneId as EditableLayoutZoneId, bounds);
+  }
+
+  function resetLayoutZone(zoneId: EditableLayoutZoneId): void {
+    patchProject((current) => {
+      const nextLayout = { ...current.layout };
+      delete nextLayout[zoneId];
+      return {
+        ...current,
+        layout: nextLayout
+      };
+    });
+    setMessage(`${LAYOUT_ZONES.find((zone) => zone.id === zoneId)?.label ?? "Layout"} reset.`);
+  }
+
+  function resetAllLayoutZones(): void {
+    patchProject((current) => ({
+      ...current,
+      layout: {}
+    }));
+    setMessage("2D layout reset.");
+  }
+
+  async function applyGeneratedFoilMask(): Promise<void> {
+    try {
+      const { generateFoilMaskDataUrl } = await import("@card-pipeline/engine");
+      const src = generateFoilMaskDataUrl(selectedFoilPattern, project);
+      const pattern = FOIL_MASK_PATTERNS.find((entry) => entry.id === selectedFoilPattern);
+      patchProject((current) => ({
+        ...current,
+        assets: {
+          ...current.assets,
+          foilMask: {
+            src,
+            name: `${pattern?.label ?? "Generated Foil"} Mask.png`
+          }
+        }
+      }));
+      setMessage(`${pattern?.label ?? "Foil"} mask generated.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Foil mask generation failed.");
+    }
   }
 
   function updateContent<K extends keyof CardProject["content"]>(
@@ -452,13 +558,18 @@ function App(): ReactElement {
               </button>
             </div>
             <div className="viewport-canvas">
-              <CardViewport project={project} rotation={project.viewRotation} onRotationChange={updateViewRotation} />
+              <Suspense fallback={<div className="viewport-loading">Loading 3D preview...</div>}>
+                <CardViewport project={project} rotation={project.viewRotation} onRotationChange={updateViewRotation} />
+              </Suspense>
             </div>
           </div>
 
           <div className="stage-actions">
             <button className="primary-button" type="button" onClick={() => void handleRenderExport()} disabled={Boolean(busyLabel)}>
               {busyLabel ? busyLabel : "Render Export"}
+            </button>
+            <button type="button" onClick={() => void handlePostReadyRender()} disabled={Boolean(busyLabel)}>
+              Post-Ready Render
             </button>
             <button type="button" onClick={handleProjectExport}>
               Save Project
@@ -715,6 +826,88 @@ function App(): ReactElement {
           </>
         ) : null}
 
+        {activeTab === "layout" ? (
+          <>
+            <section className="panel">
+              <h2>Direct 2D Layout</h2>
+              <p className="muted">Drag a box on the card, then fine-tune it below.</p>
+              <LayoutZoneEditor
+                zones={LAYOUT_ZONES.map((zone) => ({
+                  id: zone.id,
+                  label: zone.label,
+                  bounds: project.layout[zone.id] ?? activeTheme[zone.id]
+                }))}
+                selectedZoneId={selectedLayoutZoneId}
+                frontArtSrc={project.assets.frontArt?.src}
+                onSelectZone={(zoneId) => setSelectedLayoutZoneId(zoneId as EditableLayoutZoneId)}
+                onMoveZone={moveLayoutZone}
+              />
+              <div className="layout-zone-picker">
+                {LAYOUT_ZONES.map((zone) => (
+                  <button
+                    key={zone.id}
+                    type="button"
+                    className={zone.id === selectedLayoutZoneId ? "tab-button active" : "tab-button"}
+                    onClick={() => setSelectedLayoutZoneId(zone.id)}
+                  >
+                    {zone.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel">
+              <h2>{LAYOUT_ZONES.find((zone) => zone.id === selectedLayoutZoneId)?.label} Box</h2>
+              <div className="field-grid">
+                <RangeField
+                  label="X Position"
+                  value={selectedLayoutZone.x}
+                  min={0}
+                  max={1400 - selectedLayoutZone.width}
+                  step={1}
+                  format={(value) => `${Math.round(value)} px`}
+                  onChange={(value) => updateLayoutZone(selectedLayoutZoneId, { ...selectedLayoutZone, x: value })}
+                />
+                <RangeField
+                  label="Y Position"
+                  value={selectedLayoutZone.y}
+                  min={0}
+                  max={2000 - selectedLayoutZone.height}
+                  step={1}
+                  format={(value) => `${Math.round(value)} px`}
+                  onChange={(value) => updateLayoutZone(selectedLayoutZoneId, { ...selectedLayoutZone, y: value })}
+                />
+                <RangeField
+                  label="Width"
+                  value={selectedLayoutZone.width}
+                  min={120}
+                  max={1400 - selectedLayoutZone.x}
+                  step={1}
+                  format={(value) => `${Math.round(value)} px`}
+                  onChange={(value) => updateLayoutZone(selectedLayoutZoneId, { ...selectedLayoutZone, width: value })}
+                />
+                <RangeField
+                  label="Height"
+                  value={selectedLayoutZone.height}
+                  min={60}
+                  max={2000 - selectedLayoutZone.y}
+                  step={1}
+                  format={(value) => `${Math.round(value)} px`}
+                  onChange={(value) => updateLayoutZone(selectedLayoutZoneId, { ...selectedLayoutZone, height: value })}
+                />
+              </div>
+              <div className="button-row">
+                <button className="ghost-button" type="button" onClick={() => resetLayoutZone(selectedLayoutZoneId)}>
+                  Reset Selected Box
+                </button>
+                <button className="ghost-button" type="button" onClick={resetAllLayoutZones}>
+                  Reset All Boxes
+                </button>
+              </div>
+            </section>
+          </>
+        ) : null}
+
         {activeTab === "surface" ? (
           <>
             <section className="panel">
@@ -760,6 +953,24 @@ function App(): ReactElement {
             <section className="panel">
               <h2>Surface Maps</h2>
               <p className="muted">Leave these empty and the studio will use built-in premium fallback maps.</p>
+              <div className="field-grid">
+                <label>
+                  Foil Mask Generator
+                  <select value={selectedFoilPattern} onChange={(event) => setSelectedFoilPattern(event.target.value as FoilMaskPattern)}>
+                    {FOIL_MASK_PATTERNS.map((pattern) => (
+                      <option key={pattern.id} value={pattern.id}>
+                        {pattern.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="helper-copy">
+                  {FOIL_MASK_PATTERNS.find((pattern) => pattern.id === selectedFoilPattern)?.description}
+                </p>
+                <button type="button" onClick={() => void applyGeneratedFoilMask()}>
+                  Generate Foil Mask
+                </button>
+              </div>
               <div className="asset-grid">
                 {SURFACE_ASSETS.map(({ slot, label, hint }) => (
                   <AssetCard

@@ -50,6 +50,18 @@ function disposeTextures(textures: TextureState | null): void {
   textures.emissiveOverlay?.dispose();
 }
 
+function createTextureSignature(project: CardProject): string {
+  return JSON.stringify({
+    themeId: project.themeId,
+    finishId: project.finishId,
+    content: project.content,
+    assets: project.assets,
+    layout: project.layout,
+    artPlacement: project.artPlacement,
+    framePlacement: project.framePlacement
+  });
+}
+
 async function loadTextureState(project: CardProject): Promise<TextureState> {
   const [frontCanvas, backCanvas, foilMask, roughnessMap, normalMap, emissiveOverlay] = await Promise.all([
     composeFrontCanvas(project),
@@ -79,7 +91,8 @@ async function loadTextureState(project: CardProject): Promise<TextureState> {
 }
 
 function useCardTextures(project: CardProject): TextureState | null {
-  const deferredProject = useDeferredValue(project);
+  const textureSignature = useDeferredValue(createTextureSignature(project));
+  const deferredProject = useMemo(() => project, [textureSignature]);
   const [textures, setTextures] = useState<TextureState | null>(null);
 
   useEffect(() => {
@@ -182,6 +195,7 @@ function CardModel({
     startY: number;
     startRotation: ViewRotation;
     mode: "spin" | "roll";
+    captureTarget: HTMLElement | null;
   } | null>(null);
   const textures = useCardTextures(project);
   const theme = getTheme(project.themeId);
@@ -259,9 +273,10 @@ function CardModel({
       startX: event.clientX,
       startY: event.clientY,
       startRotation: rotation,
-      mode
+      mode,
+      captureTarget: event.nativeEvent.target instanceof HTMLElement ? event.nativeEvent.target : null
     };
-    (event.target as HTMLElement).setPointerCapture(event.pointerId);
+    dragRef.current.captureTarget?.setPointerCapture?.(event.pointerId);
   }
 
   function handlePointerMove(event: ThreeEvent<PointerEvent>): void {
@@ -294,7 +309,7 @@ function CardModel({
       return;
     }
 
-    const target = event.target as HTMLElement | null;
+    const target = drag.captureTarget;
     if (target?.hasPointerCapture(drag.pointerId)) {
       target.releasePointerCapture(drag.pointerId);
     }
@@ -364,8 +379,10 @@ export function CardViewport({
   return (
     <Canvas
       camera={{ position: [0, 0.1, viewPreset.distance], fov: 24 }}
-      dpr={[1, 2]}
-      gl={{ antialias: true, alpha: true }}
+      dpr={[1, 1.5]}
+      frameloop={project.shimmerSpeed > 0 ? "always" : "demand"}
+      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      performance={{ min: 0.5 }}
       onContextMenu={(event) => event.preventDefault()}
     >
       <EnvironmentRig exposure={project.exposure} />

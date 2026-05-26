@@ -14,6 +14,8 @@ export type AssetSource = {
 
 export type ArtFitMode = "auto" | "art-zone" | "full-card";
 export type FrameFitMode = "auto-edge" | "raw" | "stretch";
+export type EditableLayoutZoneId = "titleZone" | "artZone" | "flavorZone" | "badgeZone";
+export type FoilMaskPattern = "diagonal-prism" | "spotlight-burst" | "border-glints" | "text-safe-sheen";
 
 export type CardAssets = {
   frontArt?: AssetSource;
@@ -73,6 +75,8 @@ export type TextZone = {
   height: number;
 };
 
+export type LayoutOverrides = Partial<Record<EditableLayoutZoneId, TextZone>>;
+
 export type ThemeDefinition = {
   id: string;
   label: string;
@@ -124,6 +128,7 @@ export type CardProject = {
   viewPresetId: string;
   content: CardContent;
   assets: CardAssets;
+  layout: LayoutOverrides;
   artPlacement: ArtPlacement;
   framePlacement: FramePlacement;
   viewRotation: ViewRotation;
@@ -167,6 +172,48 @@ export const THEMES: ThemeDefinition[] = [
     artZone: { x: 82, y: 232, width: 1236, height: 1140 },
     flavorZone: { x: 110, y: 1524, width: 1180, height: 240 },
     badgeZone: { x: 1080, y: 92, width: 210, height: 72 }
+  },
+  {
+    id: "crimson",
+    label: "Crimson Eclipse",
+    accent: "#ff5252",
+    secondaryAccent: "#ffd166",
+    backgroundTop: "#23070f",
+    backgroundBottom: "#070307",
+    edgeColor: "#6e1e2c",
+    backPattern: "#ff6b6b",
+    titleZone: { x: 92, y: 96, width: 900, height: 118 },
+    artZone: { x: 88, y: 250, width: 1224, height: 1090 },
+    flavorZone: { x: 116, y: 1508, width: 1168, height: 248 },
+    badgeZone: { x: 1046, y: 96, width: 242, height: 72 }
+  },
+  {
+    id: "mint-relic",
+    label: "Mint Relic",
+    accent: "#8ff0c4",
+    secondaryAccent: "#f4d35e",
+    backgroundTop: "#09221f",
+    backgroundBottom: "#06100f",
+    edgeColor: "#41624f",
+    backPattern: "#a4f4cf",
+    titleZone: { x: 104, y: 90, width: 900, height: 122 },
+    artZone: { x: 96, y: 240, width: 1208, height: 1120 },
+    flavorZone: { x: 124, y: 1518, width: 1152, height: 238 },
+    badgeZone: { x: 1054, y: 90, width: 230, height: 72 }
+  },
+  {
+    id: "chrome-sky",
+    label: "Chrome Sky",
+    accent: "#d9f8ff",
+    secondaryAccent: "#6ecaff",
+    backgroundTop: "#122238",
+    backgroundBottom: "#05080d",
+    edgeColor: "#6a8fb0",
+    backPattern: "#b7ecff",
+    titleZone: { x: 90, y: 86, width: 900, height: 124 },
+    artZone: { x: 76, y: 226, width: 1248, height: 1156 },
+    flavorZone: { x: 108, y: 1530, width: 1184, height: 236 },
+    badgeZone: { x: 1052, y: 86, width: 238, height: 74 }
   }
 ];
 
@@ -186,6 +233,9 @@ export const VIEW_PRESETS: ViewPreset[] = [
 
 export const EXPORT_PRESETS: ExportPreset[] = [
   { id: "social-png", label: "Social PNG", width: 1600, height: 1600, format: "png", pixelRatio: 1 },
+  { id: "post-square-png", label: "Post Square PNG", width: 1800, height: 1800, format: "png", pixelRatio: 1 },
+  { id: "post-portrait-webp", label: "Post Portrait WebP", width: 1440, height: 1800, format: "webp", pixelRatio: 1 },
+  { id: "story-png", label: "Story PNG", width: 1080, height: 1920, format: "png", pixelRatio: 1 },
   { id: "marketplace-png", label: "Marketplace PNG", width: 2000, height: 2400, format: "png", pixelRatio: 1 },
   { id: "product-webp", label: "Product WebP", width: 1600, height: 2000, format: "webp", pixelRatio: 1 },
   { id: "print-large", label: "Print Large PNG", width: 2800, height: 3600, format: "png", pixelRatio: 1 }
@@ -222,6 +272,7 @@ export const DEFAULT_PROJECT: CardProject = {
     badge: "FIRST EDITION"
   },
   assets: {},
+  layout: {},
   artPlacement: {
     fitMode: "auto",
     scale: 1,

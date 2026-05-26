@@ -143,10 +143,10 @@ function wrapText(
 function drawBadge(
   ctx: CanvasRenderingContext2D,
   theme: ThemeDefinition,
+  zone: ThemeDefinition["badgeZone"],
   label: string,
   rarity: CardProject["content"]["rarity"]
 ): void {
-  const zone = theme.badgeZone;
   const rarityColor =
     rarity === "legendary"
       ? "#f8ff61"
@@ -314,9 +314,12 @@ function resolveFrontArtFitMode(
 }
 
 function getFrontArtDrawZone(
+  project: CardProject,
   theme: ThemeDefinition,
   fitMode: Exclude<ArtFitMode, "auto">
 ): DrawZone {
+  const artZone = project.layout.artZone ?? theme.artZone;
+
   if (fitMode === "full-card") {
     return {
       x: 0,
@@ -328,12 +331,20 @@ function getFrontArtDrawZone(
   }
 
   return {
-    x: theme.artZone.x,
-    y: theme.artZone.y,
-    width: theme.artZone.width,
-    height: theme.artZone.height,
+    x: artZone.x,
+    y: artZone.y,
+    width: artZone.width,
+    height: artZone.height,
     radius: 30
   };
+}
+
+function getLayoutZone<K extends keyof CardProject["layout"] & keyof ThemeDefinition>(
+  project: CardProject,
+  theme: ThemeDefinition,
+  zoneId: K
+): ThemeDefinition[K] {
+  return (project.layout[zoneId] ?? theme[zoneId]) as ThemeDefinition[K];
 }
 
 function drawBackPattern(ctx: CanvasRenderingContext2D, theme: ThemeDefinition): void {
@@ -373,7 +384,7 @@ export async function composeFrontCanvas(project: CardProject): Promise<HTMLCanv
 
   const theme = getTheme(project.themeId);
   const finish = getFinishProfile(project.finishId);
-  const artZone = theme.artZone;
+  const artZone = getLayoutZone(project, theme, "artZone");
   let frontArtFitMode: Exclude<ArtFitMode, "auto"> = "art-zone";
 
   const baseGradient = ctx.createLinearGradient(0, 0, 0, CARD_CANVAS.height);
@@ -385,7 +396,7 @@ export async function composeFrontCanvas(project: CardProject): Promise<HTMLCanv
   if (project.assets.frontArt?.src) {
     const artImage = await loadImage(project.assets.frontArt.src);
     frontArtFitMode = resolveFrontArtFitMode(project, theme, artImage.width, artImage.height);
-    const drawZone = getFrontArtDrawZone(theme, frontArtFitMode);
+    const drawZone = getFrontArtDrawZone(project, theme, frontArtFitMode);
 
     ctx.save();
     roundedRectPath(ctx, drawZone.x, drawZone.y, drawZone.width, drawZone.height, drawZone.radius);
@@ -432,7 +443,7 @@ export async function composeFrontCanvas(project: CardProject): Promise<HTMLCanv
   }
 
   if (frontArtFitMode !== "full-card") {
-    const titleZone = theme.titleZone;
+    const titleZone = getLayoutZone(project, theme, "titleZone");
     ctx.fillStyle = "#ffffff";
     ctx.font = TITLE_FONT;
     ctx.textAlign = "left";
@@ -443,9 +454,9 @@ export async function composeFrontCanvas(project: CardProject): Promise<HTMLCanv
     ctx.font = SUBTITLE_FONT;
     ctx.fillText(project.content.subtitle.toUpperCase(), titleZone.x + 2, titleZone.y + 96, titleZone.width);
 
-    drawBadge(ctx, theme, project.content.badge, project.content.rarity);
+    drawBadge(ctx, theme, getLayoutZone(project, theme, "badgeZone"), project.content.badge, project.content.rarity);
 
-    const flavorZone = theme.flavorZone;
+    const flavorZone = getLayoutZone(project, theme, "flavorZone");
     ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.font = BODY_FONT;
     const lines = wrapText(ctx, project.content.flavorText, flavorZone.width - 40);

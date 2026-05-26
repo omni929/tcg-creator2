@@ -2,14 +2,17 @@ import {
   DEFAULT_MATERIAL_SETTINGS,
   DEFAULT_PROJECT,
   type CardProject,
+  type EditableLayoutZoneId,
   type MaterialSettings,
   type ViewRotation,
+  getTheme,
   getViewPreset
 } from "@card-pipeline/schema";
 
 export type ProjectLike = Partial<CardProject> & {
   content?: Partial<CardProject["content"]>;
   assets?: Partial<CardProject["assets"]>;
+  layout?: Partial<CardProject["layout"]>;
   artPlacement?: Partial<CardProject["artPlacement"]>;
   framePlacement?: Partial<CardProject["framePlacement"]>;
   viewRotation?: Partial<ViewRotation>;
@@ -23,6 +26,7 @@ export type BatchEntry = {
 };
 
 const DEFAULT_ROLL = -0.015;
+const LAYOUT_ZONE_IDS: EditableLayoutZoneId[] = ["titleZone", "artZone", "flavorZone", "badgeZone"];
 
 export function defaultViewRotation(viewPresetId: string): ViewRotation {
   const preset = getViewPreset(viewPresetId);
@@ -36,6 +40,7 @@ export function defaultViewRotation(viewPresetId: string): ViewRotation {
 export function normalizeProject(input: ProjectLike): CardProject {
   const viewPresetId = input.viewPresetId ?? DEFAULT_PROJECT.viewPresetId;
   const fallbackRotation = defaultViewRotation(viewPresetId);
+  const theme = getTheme(input.themeId ?? DEFAULT_PROJECT.themeId);
 
   return {
     ...DEFAULT_PROJECT,
@@ -48,6 +53,16 @@ export function normalizeProject(input: ProjectLike): CardProject {
       ...DEFAULT_PROJECT.assets,
       ...input.assets
     },
+    layout: LAYOUT_ZONE_IDS.reduce<CardProject["layout"]>((layout, zoneId) => {
+      const zone = input.layout?.[zoneId];
+      if (zone) {
+        layout[zoneId] = {
+          ...theme[zoneId],
+          ...zone
+        };
+      }
+      return layout;
+    }, {}),
     artPlacement: {
       ...DEFAULT_PROJECT.artPlacement,
       ...input.artPlacement
