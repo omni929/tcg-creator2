@@ -1,12 +1,13 @@
 import {
   DEFAULT_MATERIAL_SETTINGS,
   type CardProject,
+  type ViewRotation,
   getFinishProfile,
   getTheme,
   getViewPreset
 } from "@card-pipeline/schema";
 import { OrbitControls } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -165,16 +166,26 @@ function useManagedMaterial<T extends THREE.Material | FoilOverlayMaterial>(mate
 
 function CardModel({
   project,
-  interactive
+  interactive,
+  rotation,
+  onRotationChange
 }: {
   project: CardProject;
   interactive: boolean;
+  rotation: ViewRotation;
+  onRotationChange?: (rotation: ViewRotation) => void;
 }): ReactElement | null {
   const groupRef = useRef<THREE.Group>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startRotation: ViewRotation;
+    mode: "spin" | "roll";
+  } | null>(null);
   const textures = useCardTextures(project);
   const theme = getTheme(project.themeId);
   const finish = getFinishProfile(project.finishId);
-  const viewPreset = getViewPreset(project.viewPresetId);
   const materialSettings = project.material ?? DEFAULT_MATERIAL_SETTINGS;
   const edgeGeometry = useMemo(() => createCardEdgeGeometry(), []);
   const faceGeometry = useMemo(() => createCardFaceGeometry(), []);
@@ -236,21 +247,66 @@ function CardModel({
     };
   }, [edgeGeometry, faceGeometry]);
 
-  useFrame((state, delta) => {
+  function handlePointerDown(event: ThreeEvent<PointerEvent>): void {
+    if (!interactive || !onRotationChange) {
+      return;
+    }
+
+    event.stopPropagation();
+    const mode = event.shiftKey || event.button === 2 ? "roll" : "spin";
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRotation: rotation,
+      mode
+    };
+    (event.target as HTMLElement).setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: ThreeEvent<PointerEvent>): void {
+    const drag = dragRef.current;
+    if (!drag || !onRotationChange) {
+      return;
+    }
+
+    event.stopPropagation();
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    const nextRotation =
+      drag.mode === "roll"
+        ? {
+            ...drag.startRotation,
+            z: drag.startRotation.z + dx * 0.01
+          }
+        : {
+            x: drag.startRotation.x + dy * 0.01,
+            y: drag.startRotation.y + dx * 0.01,
+            z: drag.startRotation.z
+          };
+
+    onRotationChange(nextRotation);
+  }
+
+  function endDrag(event: ThreeEvent<PointerEvent>): void {
+    const drag = dragRef.current;
+    if (!drag) {
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    if (target?.hasPointerCapture(drag.pointerId)) {
+      target.releasePointerCapture(drag.pointerId);
+    }
+    dragRef.current = null;
+  }
+
+  useFrame((_, delta) => {
     if (!foilOverlayMaterial) {
       return;
     }
 
     foilOverlayMaterial.uniforms.uTime.value += delta * project.shimmerSpeed;
-
-    if (!groupRef.current) {
-      return;
-    }
-
-    const idleTilt = interactive && project.showTiltPreview;
-    groupRef.current.rotation.x = viewPreset.rotationX + (idleTilt ? Math.sin(state.clock.elapsedTime * 0.9) * 0.03 : 0);
-    groupRef.current.rotation.y = viewPreset.rotationY + (idleTilt ? Math.cos(state.clock.elapsedTime * 0.7) * 0.035 : 0);
-    groupRef.current.rotation.z = -0.015;
   });
 
   if (!textures || !frontBaseMaterial || !foilOverlayMaterial || !backMaterial) {
@@ -261,7 +317,12 @@ function CardModel({
     <group
       ref={groupRef}
       position={CARD_RENDER_TRANSFORM.groupPosition}
-      rotation={[viewPreset.rotationX, viewPreset.rotationY, -0.015]}
+      rotation={[rotation.x, rotation.y, rotation.z]}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endDrag}
+      onPointerLeave={endDrag}
+      onPointerCancel={endDrag}
     >
       <mesh geometry={edgeGeometry} material={edgeMaterial} />
       <mesh geometry={faceGeometry} material={frontBaseMaterial} position={[0, 0, CARD_MODEL.thickness / 2 + 0.001]} />
@@ -283,18 +344,29 @@ function CardModel({
 
 export function CardViewport({
   project,
-  interactive = true
+  interactive = true,
+  rotation,
+  onRotationChange
 }: {
   project: CardProject;
   interactive?: boolean;
+  rotation?: ViewRotation;
+  onRotationChange?: (rotation: ViewRotation) => void;
 }): ReactElement {
   const viewPreset = getViewPreset(project.viewPresetId);
+  const activeRotation = rotation ??
+    project.viewRotation ?? {
+      x: viewPreset.rotationX,
+      y: viewPreset.rotationY,
+      z: -0.015
+    };
 
   return (
     <Canvas
       camera={{ position: [0, 0.1, viewPreset.distance], fov: 24 }}
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: true }}
+      onContextMenu={(event) => event.preventDefault()}
     >
       <EnvironmentRig exposure={project.exposure} />
       <CameraRig project={project} />
@@ -302,19 +374,17 @@ export function CardViewport({
       <spotLight position={[4.6, 5.8, 8]} intensity={96} angle={0.38} penumbra={0.7} />
       <directionalLight position={[-3, 1.4, 4]} intensity={1.7} color="#fff3c4" />
       <pointLight position={[-4.5, 1.2, -3.6]} intensity={20} color="#8ad9ff" />
-      <CardModel project={project} interactive={interactive} />
+      <CardModel project={project} interactive={interactive} rotation={activeRotation} onRotationChange={onRotationChange} />
       {interactive ? (
         <OrbitControls
           enablePan={false}
+          enableRotate={false}
           enableZoom
           enableDamping
           dampingFactor={0.08}
           zoomSpeed={0.85}
           minDistance={Math.max(7.6, viewPreset.distance - 1.9)}
           maxDistance={viewPreset.distance + 9.5}
-          minPolarAngle={Math.PI / 2.12}
-          maxPolarAngle={Math.PI / 1.88}
-          rotateSpeed={0.65}
           target={CARD_RENDER_TRANSFORM.cameraTarget}
         />
       ) : null}

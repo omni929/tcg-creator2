@@ -203,6 +203,93 @@ function drawFallbackFrame(ctx: CanvasRenderingContext2D, theme: ThemeDefinition
   ctx.restore();
 }
 
+function getAlphaBounds(
+  image: HTMLImageElement,
+  alphaThreshold = 8
+): { x: number; y: number; width: number; height: number } | null {
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+  if (!ctx) {
+    return null;
+  }
+
+  ctx.drawImage(image, 0, 0, width, height);
+  const { data } = ctx.getImageData(0, 0, width, height);
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha > alphaThreshold) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return null;
+  }
+
+  const padding = 3;
+  minX = Math.max(0, minX - padding);
+  minY = Math.max(0, minY - padding);
+  maxX = Math.min(width - 1, maxX + padding);
+  maxY = Math.min(height - 1, maxY + padding);
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  };
+}
+
+function drawAutoFittedFrame(
+  ctx: CanvasRenderingContext2D,
+  frameImage: HTMLImageElement,
+  fitMode: CardProject["framePlacement"]["fitMode"] = "auto-edge",
+  bleed = 0
+): void {
+  const bounds = fitMode === "auto-edge" ? getAlphaBounds(frameImage) : null;
+  const targetX = -bleed;
+  const targetY = -bleed;
+  const targetWidth = CARD_CANVAS.width + bleed * 2;
+  const targetHeight = CARD_CANVAS.height + bleed * 2;
+
+  ctx.save();
+  roundedRectPath(ctx, 0, 0, CARD_CANVAS.width, CARD_CANVAS.height, CARD_CANVAS.radius);
+  ctx.clip();
+
+  if (fitMode === "raw") {
+    ctx.drawImage(frameImage, 0, 0, CARD_CANVAS.width, CARD_CANVAS.height);
+  } else if (bounds) {
+    ctx.drawImage(
+      frameImage,
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+      targetX,
+      targetY,
+      targetWidth,
+      targetHeight
+    );
+  } else {
+    ctx.drawImage(frameImage, targetX, targetY, targetWidth, targetHeight);
+  }
+
+  ctx.restore();
+}
+
 function getAutoFitScore(imageAspect: number, targetAspect: number): number {
   return Math.abs(Math.log(imageAspect / targetAspect));
 }
@@ -334,7 +421,12 @@ export async function composeFrontCanvas(project: CardProject): Promise<HTMLCanv
 
   if (project.assets.frontFrame?.src) {
     const frameImage = await loadImage(project.assets.frontFrame.src);
-    ctx.drawImage(frameImage, 0, 0, CARD_CANVAS.width, CARD_CANVAS.height);
+    drawAutoFittedFrame(
+      ctx,
+      frameImage,
+      project.framePlacement?.fitMode ?? "auto-edge",
+      project.framePlacement?.bleed ?? 0
+    );
   } else if (frontArtFitMode !== "full-card") {
     drawFallbackFrame(ctx, theme);
   }

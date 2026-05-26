@@ -8,7 +8,9 @@ import {
   VIEW_PRESETS,
   type ArtFitMode,
   type CardProject,
-  type MaterialSettings
+  type MaterialSettings,
+  type ViewRotation,
+  getViewPreset
 } from "@card-pipeline/schema";
 import { startTransition, useMemo, useState, type ReactElement } from "react";
 import { downloadBlob, fileToDataUrl, fileToText, safeFileBaseName } from "./lib/file";
@@ -19,6 +21,8 @@ type ProjectLike = Partial<CardProject> & {
   content?: Partial<CardProject["content"]>;
   assets?: Partial<CardProject["assets"]>;
   artPlacement?: Partial<CardProject["artPlacement"]>;
+  framePlacement?: Partial<CardProject["framePlacement"]>;
+  viewRotation?: Partial<ViewRotation>;
   material?: Partial<MaterialSettings>;
 };
 
@@ -73,6 +77,7 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
       themeId: "obsidian",
       finishId: "holo",
       viewPresetId: "hero",
+      viewRotation: defaultViewRotation("hero"),
       exportPresetId: "marketplace-png",
       showTiltPreview: true,
       material: {
@@ -93,6 +98,7 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
       themeId: "aurora",
       finishId: "gloss",
       viewPresetId: "front",
+      viewRotation: defaultViewRotation("front"),
       exportPresetId: "product-webp",
       showTiltPreview: false,
       material: {
@@ -113,6 +119,7 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
       themeId: "obsidian",
       finishId: "spectral",
       viewPresetId: "dramatic",
+      viewRotation: defaultViewRotation("dramatic"),
       exportPresetId: "print-large",
       showTiltPreview: true,
       material: {
@@ -133,7 +140,22 @@ const FRONT_ART_FIT_MODES: Array<{ value: ArtFitMode; label: string }> = [
   { value: "art-zone", label: "Inner Art Window" }
 ];
 
+const ROTATION_STEP = Math.PI / 12;
+const DEFAULT_ROLL = -0.015;
+
+function defaultViewRotation(viewPresetId: string): ViewRotation {
+  const preset = getViewPreset(viewPresetId);
+  return {
+    x: preset.rotationX,
+    y: preset.rotationY,
+    z: DEFAULT_ROLL
+  };
+}
+
 function normalizeProject(input: ProjectLike): CardProject {
+  const viewPresetId = input.viewPresetId ?? DEFAULT_PROJECT.viewPresetId;
+  const fallbackRotation = defaultViewRotation(viewPresetId);
+
   return {
     ...DEFAULT_PROJECT,
     ...input,
@@ -148,6 +170,14 @@ function normalizeProject(input: ProjectLike): CardProject {
     artPlacement: {
       ...DEFAULT_PROJECT.artPlacement,
       ...input.artPlacement
+    },
+    framePlacement: {
+      ...DEFAULT_PROJECT.framePlacement,
+      ...input.framePlacement
+    },
+    viewRotation: {
+      ...fallbackRotation,
+      ...input.viewRotation
     },
     material: {
       ...DEFAULT_MATERIAL_SETTINGS,
@@ -530,6 +560,30 @@ function App(): ReactElement {
     }));
   }
 
+  function updateViewPreset(viewPresetId: string): void {
+    patchProject((current) => ({
+      ...current,
+      viewPresetId,
+      viewRotation: defaultViewRotation(viewPresetId)
+    }));
+  }
+
+  function updateViewRotation(viewRotation: ViewRotation): void {
+    patchProject((current) => ({
+      ...current,
+      viewRotation,
+      showTiltPreview: false
+    }));
+  }
+
+  function nudgeViewRotation(change: Partial<ViewRotation>): void {
+    updateViewRotation({
+      x: change.x ?? project.viewRotation.x,
+      y: change.y ?? project.viewRotation.y,
+      z: change.z ?? project.viewRotation.z
+    });
+  }
+
   function updateMaterial<K extends keyof CardProject["material"]>(
     key: K,
     value: CardProject["material"][K]
@@ -595,8 +649,37 @@ function App(): ReactElement {
                 <span>{project.content.setCode}</span>
               </div>
             </div>
+            <div className="rotation-controls" aria-label="3D card rotation controls">
+              <button type="button" onClick={() => nudgeViewRotation({ x: project.viewRotation.x - ROTATION_STEP })}>
+                Pitch Up
+              </button>
+              <button type="button" onClick={() => nudgeViewRotation({ x: project.viewRotation.x + ROTATION_STEP })}>
+                Pitch Down
+              </button>
+              <button type="button" onClick={() => nudgeViewRotation({ y: project.viewRotation.y - ROTATION_STEP })}>
+                Yaw Left
+              </button>
+              <button type="button" onClick={() => nudgeViewRotation({ y: project.viewRotation.y + ROTATION_STEP })}>
+                Yaw Right
+              </button>
+              <button type="button" onClick={() => nudgeViewRotation({ z: project.viewRotation.z - ROTATION_STEP })}>
+                Roll Left
+              </button>
+              <button type="button" onClick={() => nudgeViewRotation({ z: project.viewRotation.z + ROTATION_STEP })}>
+                Roll Right
+              </button>
+              <button type="button" onClick={() => updateViewRotation({ x: 0, y: 0, z: 0 })}>
+                Front
+              </button>
+              <button type="button" onClick={() => updateViewRotation({ x: 0, y: Math.PI, z: 0 })}>
+                Back
+              </button>
+              <button type="button" onClick={() => updateViewRotation(defaultViewRotation(project.viewPresetId))}>
+                Reset
+              </button>
+            </div>
             <div className="viewport-canvas">
-              <CardViewport project={project} />
+              <CardViewport project={project} rotation={project.viewRotation} onRotationChange={updateViewRotation} />
             </div>
           </div>
 
@@ -744,7 +827,7 @@ function App(): ReactElement {
                 </label>
                 <label>
                   View Preset
-                  <select value={project.viewPresetId} onChange={(event) => updateProject("viewPresetId", event.target.value)}>
+                  <select value={project.viewPresetId} onChange={(event) => updateViewPreset(event.target.value)}>
                     {VIEW_PRESETS.map((preset) => (
                       <option key={preset.id} value={preset.id}>
                         {preset.label}

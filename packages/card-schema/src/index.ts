@@ -13,6 +13,7 @@ export type AssetSource = {
 };
 
 export type ArtFitMode = "auto" | "art-zone" | "full-card";
+export type FrameFitMode = "auto-edge" | "raw" | "stretch";
 
 export type CardAssets = {
   frontArt?: AssetSource;
@@ -40,6 +41,17 @@ export type ArtPlacement = {
   scale: number;
   offsetX: number;
   offsetY: number;
+};
+
+export type FramePlacement = {
+  fitMode: FrameFitMode;
+  bleed: number;
+};
+
+export type ViewRotation = {
+  x: number;
+  y: number;
+  z: number;
 };
 
 export type MaterialSettings = {
@@ -113,6 +125,8 @@ export type CardProject = {
   content: CardContent;
   assets: CardAssets;
   artPlacement: ArtPlacement;
+  framePlacement: FramePlacement;
+  viewRotation: ViewRotation;
   material: MaterialSettings;
   shimmerSpeed: number;
   exposure: number;
@@ -213,6 +227,15 @@ export const DEFAULT_PROJECT: CardProject = {
     scale: 1,
     offsetX: 0,
     offsetY: 0
+  },
+  framePlacement: {
+    fitMode: "auto-edge",
+    bleed: 0
+  },
+  viewRotation: {
+    x: -0.16,
+    y: 0.24,
+    z: -0.015
   },
   material: DEFAULT_MATERIAL_SETTINGS,
   shimmerSpeed: 1,

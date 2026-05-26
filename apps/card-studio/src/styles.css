@@ -228,6 +228,22 @@ p {
   font-size: 0.82rem;
 }
 
+.rotation-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 20px 14px;
+}
+
+.rotation-controls button {
+  min-height: 34px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.055);
+}
+
 .viewport-canvas {
   position: relative;
   min-height: clamp(620px, 68vh, 860px);
@@ -465,6 +481,10 @@ button,
 
   .viewport-tags {
     justify-content: flex-start;
+  }
+
+  .rotation-controls {
+    padding-inline: 16px;
   }
 
   .viewport-canvas {

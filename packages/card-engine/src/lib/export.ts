@@ -182,10 +182,15 @@ export async function renderCard(
   scene.add(rim);
 
   const group = await buildCardMeshes(project);
+  const viewRotation = project.viewRotation ?? {
+    x: viewPreset.rotationX,
+    y: viewPreset.rotationY,
+    z: -0.015
+  };
   group.position.set(...CARD_RENDER_TRANSFORM.groupPosition);
-  group.rotation.x = viewPreset.rotationX;
-  group.rotation.y = viewPreset.rotationY;
-  group.rotation.z = -0.015;
+  group.rotation.x = viewRotation.x;
+  group.rotation.y = viewRotation.y;
+  group.rotation.z = viewRotation.z;
   scene.add(group);
 
   renderer.render(scene, camera);
